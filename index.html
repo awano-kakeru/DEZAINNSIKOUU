@@ -3,24 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>匿名お悩み相談室（試作品）</title>
+    <title>匿名お悩み相談室</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 </head>
 <body class="bg-gray-100 h-screen flex flex-col font-sans overflow-hidden">
-
+ 
     <!-- ルーム参加画面 -->
     <div id="join-screen" class="flex-1 flex items-center justify-center p-6">
         <div class="bg-white rounded-xl shadow-md p-6 w-full max-w-sm">
             <h1 class="text-lg font-bold text-indigo-700 mb-1">ココロの匿名相談室</h1>
             <p class="text-xs text-gray-500 mb-4">合言葉（ルームコード）を知っている人だけが、同じ会話に入れます。</p>
-
+ 
             <label class="block text-sm font-bold text-gray-700 mb-1">お名前（相手に表示されます・匿名でOK）</label>
             <input id="display-name" type="text" placeholder="例：そら" class="w-full border border-gray-300 rounded-lg p-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500" maxlength="20">
-
+ 
             <label class="block text-sm font-bold text-gray-700 mb-1">ルームコード</label>
             <input id="room-code-input" type="text" placeholder="例：sora-2024" class="w-full border border-gray-300 rounded-lg p-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" maxlength="30">
             <p id="join-error" class="text-xs text-red-500 mb-2 hidden"></p>
-
+ 
             <button onclick="joinRoom()" class="w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 transition mb-2">
                 このコードで入室する
             </button>
@@ -29,7 +29,7 @@
             </button>
         </div>
     </div>
-
+ 
     <!-- チャット画面 -->
     <div id="chat-screen" class="hidden flex-1 flex flex-col overflow-hidden">
         <header class="bg-indigo-600 text-white p-4 shadow-md text-center shrink-0">
@@ -39,11 +39,11 @@
                 （このコードを相手に伝えてください）
             </p>
         </header>
-
+ 
         <main id="chat-area" class="flex-1 p-4 overflow-y-auto max-w-2xl w-full mx-auto space-y-4"></main>
-
-        <div id="status-bar" class="text-center text-xs text-gray-400 py-1 shrink-0"></div>
-
+ 
+        <div id="status-bar" class="text-center text-xs text-gray-400 py-1 shrink-0">接続中...</div>
+ 
         <footer class="bg-white p-4 border-t border-gray-200 shadow-lg shrink-0">
             <div class="max-w-2xl w-full mx-auto flex gap-2">
                 <textarea id="message-input" rows="1" placeholder="ここにお悩みを入力..." class="flex-1 border border-gray-300 rounded-lg p-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
@@ -53,98 +53,85 @@
             </div>
         </footer>
     </div>
-
-    <script>
-        // このタブだけの一時的なID（保存はしない。ページを再読み込みすると新しく発行される）
+ 
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+        import {
+            getDatabase, ref, push, onChildAdded, query, limitToLast
+        } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+ 
+        const firebaseConfig = {
+            apiKey: "AIzaSyACHBRS6noRtotR5dJG8L7XITjWK5PoElE",
+            authDomain: "dezasiko.firebaseapp.com",
+            databaseURL: "https://dezasiko-default-rtdb.firebaseio.com",
+            projectId: "dezasiko",
+            storageBucket: "dezasiko.firebasestorage.app",
+            messagingSenderId: "997548422252",
+            appId: "1:997548422252:web:aca0844465fc921b6b9449"
+        };
+ 
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+ 
         const myId = 'u-' + Math.random().toString(36).slice(2, 10);
         let myName = '';
         let roomCode = '';
-        let pollTimer = null;
-        let lastRenderedCount = 0;
-
-        function storageKey(code) {
-            return 'chatroom:' + code;
-        }
-
-        function generateRoom() {
+ 
+        window.generateRoom = function () {
             const code = Math.random().toString(36).slice(2, 8);
             document.getElementById('room-code-input').value = code;
-        }
-
-        async function joinRoom() {
+        };
+ 
+        window.joinRoom = function () {
             const nameInput = document.getElementById('display-name');
             const codeInput = document.getElementById('room-code-input');
             const errorEl = document.getElementById('join-error');
-
+ 
             const name = nameInput.value.trim();
             const code = codeInput.value.trim();
-
+ 
             if (!name || !code) {
                 errorEl.textContent = 'お名前とルームコードの両方を入力してください。';
                 errorEl.classList.remove('hidden');
                 return;
             }
-
+ 
             myName = name;
             roomCode = code;
-
+ 
             document.getElementById('join-screen').classList.add('hidden');
             document.getElementById('chat-screen').classList.remove('hidden');
             document.getElementById('room-code-label').textContent = roomCode;
-
-            await refreshMessages(true);
-            pollTimer = setInterval(() => refreshMessages(false), 2500);
-        }
-
-        async function loadHistory() {
-            try {
-                const result = await window.storage.get(storageKey(roomCode), true);
-                return result ? JSON.parse(result.value) : [];
-            } catch (e) {
-                return []; // まだ誰もメッセージを送っていない場合はここに来る
-            }
-        }
-
-        async function refreshMessages(forceRender) {
+ 
+            listenForMessages();
+        };
+ 
+        function listenForMessages() {
             const statusBar = document.getElementById('status-bar');
-            try {
-                const history = await loadHistory();
-                if (forceRender || history.length !== lastRenderedCount) {
-                    renderAll(history);
-                    lastRenderedCount = history.length;
-                }
-                statusBar.textContent = '接続中（数秒ごとに自動更新）';
-            } catch (e) {
-                statusBar.textContent = '通信エラー：更新できませんでした';
-            }
+            const messagesRef = query(ref(db, 'chatrooms/' + roomCode + '/messages'), limitToLast(200));
+ 
+            // 新しいメッセージが追加されるたびに自動で呼ばれる（自分の送信分も含む＝リアルタイム同期）
+            onChildAdded(messagesRef, (snapshot) => {
+                const msg = snapshot.val();
+                addMessageToDom(msg.text, msg.senderId === myId, msg.senderName);
+            }, (error) => {
+                statusBar.textContent = '接続エラー：Firebaseの設定またはルールを確認してください';
+                console.error(error);
+            });
+ 
+            statusBar.textContent = '接続中（リアルタイム同期）';
         }
-
-        function renderAll(history) {
-            const chatArea = document.getElementById('chat-area');
-            chatArea.innerHTML = '';
-
-            if (history.length === 0) {
-                const hint = document.createElement('div');
-                hint.className = 'text-center text-xs text-gray-400 mt-4';
-                hint.textContent = 'まだメッセージはありません。相手にルームコードを伝えて、話しかけてみましょう。';
-                chatArea.appendChild(hint);
-                return;
-            }
-
-            history.forEach(msg => addMessageToDom(msg.text, msg.senderId === myId, msg.senderName));
-            chatArea.scrollTop = chatArea.scrollHeight;
-        }
-
+ 
         function addMessageToDom(text, isMine, senderName) {
             const chatArea = document.getElementById('chat-area');
             const wrapper = document.createElement('div');
             wrapper.classList.add('flex', 'flex-col', isMine ? 'items-end' : 'items-start');
-
+ 
             const label = document.createElement('div');
             label.className = 'text-[10px] text-gray-400 mb-0.5 px-1';
             label.textContent = isMine ? 'あなた' : senderName;
             wrapper.appendChild(label);
-
+ 
             const bubble = document.createElement('div');
             bubble.innerText = text;
             bubble.classList.add('p-3', 'rounded-lg', 'shadow-sm', 'text-sm', 'max-w-[80%]', 'break-words');
@@ -152,40 +139,31 @@
                 ? ['bg-indigo-500', 'text-white']
                 : ['bg-white', 'text-gray-700', 'border', 'border-gray-200']));
             wrapper.appendChild(bubble);
-
+ 
             chatArea.appendChild(wrapper);
+            chatArea.scrollTop = chatArea.scrollHeight;
         }
-
-        async function sendMessage() {
+ 
+        window.sendMessage = function () {
             const input = document.getElementById('message-input');
             const text = input.value.trim();
             if (!text) return;
-
+ 
+            const messagesRef = ref(db, 'chatrooms/' + roomCode + '/messages');
+            push(messagesRef, {
+                text: text,
+                senderId: myId,
+                senderName: myName,
+                ts: Date.now()
+            });
+ 
             input.value = '';
-            const statusBar = document.getElementById('status-bar');
-
-            try {
-                // 送信直前に最新履歴を取り直してから追記する（同時送信による上書き事故を減らすため）
-                const history = await loadHistory();
-                history.push({
-                    text: text,
-                    senderId: myId,
-                    senderName: myName,
-                    ts: Date.now()
-                });
-                await window.storage.set(storageKey(roomCode), JSON.stringify(history), true);
-                lastRenderedCount = history.length;
-                renderAll(history);
-                statusBar.textContent = '送信しました';
-            } catch (e) {
-                statusBar.textContent = '送信に失敗しました。もう一度お試しください。';
-            }
-        }
-
-        document.getElementById('message-input').addEventListener('keydown', function(e) {
+        };
+ 
+        document.getElementById('message-input').addEventListener('keydown', function (e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                sendMessage();
+                window.sendMessage();
             }
         });
     </script>

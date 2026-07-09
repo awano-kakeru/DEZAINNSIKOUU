@@ -7,59 +7,37 @@
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 </head>
 <body class="bg-gray-100 h-screen flex flex-col font-sans overflow-hidden">
- 
-    <!-- ルーム参加画面 -->
-    <div id="join-screen" class="flex-1 flex items-center justify-center p-6">
-        <div class="bg-white rounded-xl shadow-md p-6 w-full max-w-sm">
-            <h1 class="text-lg font-bold text-indigo-700 mb-1">ココロの匿名相談室</h1>
-            <p class="text-xs text-gray-500 mb-4">合言葉（ルームコード）を知っている人だけが、同じ会話に入れます。</p>
- 
-            <label class="block text-sm font-bold text-gray-700 mb-1">お名前（相手に表示されます・匿名でOK）</label>
-            <input id="display-name" type="text" placeholder="例：そら" class="w-full border border-gray-300 rounded-lg p-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500" maxlength="20">
- 
-            <label class="block text-sm font-bold text-gray-700 mb-1">ルームコード</label>
-            <input id="room-code-input" type="text" placeholder="例：sora-2024" class="w-full border border-gray-300 rounded-lg p-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" maxlength="30">
-            <p id="join-error" class="text-xs text-red-500 mb-2 hidden"></p>
- 
-            <button onclick="joinRoom()" class="w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 transition mb-2">
-                このコードで入室する
-            </button>
-            <button onclick="generateRoom()" class="w-full bg-gray-100 text-gray-700 py-2 rounded-lg text-sm font-bold hover:bg-gray-200 transition">
-                新しいルームを作る（ランダムコード発行）
+
+    <header class="bg-indigo-600 text-white p-4 shadow-md text-center shrink-0">
+        <h1 class="text-lg font-bold">ココロの匿名相談室</h1>
+        <p class="text-xs text-indigo-200 mt-1">このページのやり取りは、あなたと相談員だけに見えます</p>
+    </header>
+
+    <main id="chat-area" class="flex-1 p-4 overflow-y-auto max-w-2xl w-full mx-auto space-y-4">
+        <div class="flex flex-col items-start">
+            <div class="bg-white p-3 rounded-lg shadow-sm border border-gray-200 max-w-[80%] text-gray-700 text-sm">
+                こんにちは。ここはあなただけの秘密の相談室です。誰にも言えないお悩みや、聴いてほしいことを何でも書き込んでくださいね。相談員が確認でき次第、お返事します（すぐに繋がらない場合もあります）。
+            </div>
+        </div>
+    </main>
+
+    <div id="status-bar" class="text-center text-xs text-gray-400 py-1 shrink-0">準備中...</div>
+
+    <footer class="bg-white p-4 border-t border-gray-200 shadow-lg shrink-0">
+        <div class="max-w-2xl w-full mx-auto flex gap-2">
+            <textarea id="message-input" rows="1" placeholder="ここにお悩みを入力..." class="flex-1 border border-gray-300 rounded-lg p-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+            <button onclick="sendMessage()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 transition">
+                送信
             </button>
         </div>
-    </div>
- 
-    <!-- チャット画面 -->
-    <div id="chat-screen" class="hidden flex-1 flex flex-col overflow-hidden">
-        <header class="bg-indigo-600 text-white p-4 shadow-md text-center shrink-0">
-            <h1 class="text-lg font-bold">ココロの匿名相談室</h1>
-            <p class="text-xs text-indigo-200 mt-1">
-                ルームコード：<span id="room-code-label" class="font-mono font-bold"></span>
-                （このコードを相手に伝えてください）
-            </p>
-        </header>
- 
-        <main id="chat-area" class="flex-1 p-4 overflow-y-auto max-w-2xl w-full mx-auto space-y-4"></main>
- 
-        <div id="status-bar" class="text-center text-xs text-gray-400 py-1 shrink-0">接続中...</div>
- 
-        <footer class="bg-white p-4 border-t border-gray-200 shadow-lg shrink-0">
-            <div class="max-w-2xl w-full mx-auto flex gap-2">
-                <textarea id="message-input" rows="1" placeholder="ここにお悩みを入力..." class="flex-1 border border-gray-300 rounded-lg p-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
-                <button onclick="sendMessage()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 transition">
-                    送信
-                </button>
-            </div>
-        </footer>
-    </div>
- 
+    </footer>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
         import {
-            getDatabase, ref, push, onChildAdded, query, limitToLast
+            getDatabase, ref, push, set, onChildAdded, query, limitToLast
         } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
- 
+
         const firebaseConfig = {
             apiKey: "AIzaSyACHBRS6noRtotR5dJG8L7XITjWK5PoElE",
             authDomain: "dezasiko.firebaseapp.com",
@@ -69,69 +47,48 @@
             messagingSenderId: "997548422252",
             appId: "1:997548422252:web:aca0844465fc921b6b9449"
         };
- 
+
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
- 
-        const myId = 'u-' + Math.random().toString(36).slice(2, 10);
-        let myName = '';
-        let roomCode = '';
- 
-        window.generateRoom = function () {
-            const code = Math.random().toString(36).slice(2, 8);
-            document.getElementById('room-code-input').value = code;
-        };
- 
-        window.joinRoom = function () {
-            const nameInput = document.getElementById('display-name');
-            const codeInput = document.getElementById('room-code-input');
-            const errorEl = document.getElementById('join-error');
- 
-            const name = nameInput.value.trim();
-            const code = codeInput.value.trim();
- 
-            if (!name || !code) {
-                errorEl.textContent = 'お名前とルームコードの両方を入力してください。';
-                errorEl.classList.remove('hidden');
-                return;
-            }
- 
-            myName = name;
-            roomCode = code;
- 
-            document.getElementById('join-screen').classList.add('hidden');
-            document.getElementById('chat-screen').classList.remove('hidden');
-            document.getElementById('room-code-label').textContent = roomCode;
- 
-            listenForMessages();
-        };
- 
+
+        const myId = 'visitor-' + Math.random().toString(36).slice(2, 10);
+
+        // このタブを開いた瞬間、専用の部屋番号を自動発行する（相談者は意識しなくてよい）
+        const roomCode = Math.random().toString(36).slice(2, 6) + '-' + Math.random().toString(36).slice(2, 6);
+
+        function registerRoomActivity() {
+            // 運営者の一覧画面に「新着の相談」として表示させるための索引情報
+            set(ref(db, 'rooms_index/' + roomCode), {
+                lastActivity: Date.now(),
+                lastSender: 'visitor'
+            });
+        }
+
         function listenForMessages() {
             const statusBar = document.getElementById('status-bar');
             const messagesRef = query(ref(db, 'chatrooms/' + roomCode + '/messages'), limitToLast(200));
- 
-            // 新しいメッセージが追加されるたびに自動で呼ばれる（自分の送信分も含む＝リアルタイム同期）
+
             onChildAdded(messagesRef, (snapshot) => {
                 const msg = snapshot.val();
-                addMessageToDom(msg.text, msg.senderId === myId, msg.senderName);
+                addMessageToDom(msg.text, msg.senderId === myId);
             }, (error) => {
-                statusBar.textContent = '接続エラー：Firebaseの設定またはルールを確認してください';
+                statusBar.textContent = '接続エラーが発生しました。時間をおいて再度お試しください。';
                 console.error(error);
             });
- 
-            statusBar.textContent = '接続中（リアルタイム同期）';
+
+            statusBar.textContent = '接続中';
         }
- 
-        function addMessageToDom(text, isMine, senderName) {
+
+        function addMessageToDom(text, isMine) {
             const chatArea = document.getElementById('chat-area');
             const wrapper = document.createElement('div');
             wrapper.classList.add('flex', 'flex-col', isMine ? 'items-end' : 'items-start');
- 
+
             const label = document.createElement('div');
             label.className = 'text-[10px] text-gray-400 mb-0.5 px-1';
-            label.textContent = isMine ? 'あなた' : senderName;
+            label.textContent = isMine ? 'あなた' : '相談員';
             wrapper.appendChild(label);
- 
+
             const bubble = document.createElement('div');
             bubble.innerText = text;
             bubble.classList.add('p-3', 'rounded-lg', 'shadow-sm', 'text-sm', 'max-w-[80%]', 'break-words');
@@ -139,33 +96,38 @@
                 ? ['bg-indigo-500', 'text-white']
                 : ['bg-white', 'text-gray-700', 'border', 'border-gray-200']));
             wrapper.appendChild(bubble);
- 
+
             chatArea.appendChild(wrapper);
             chatArea.scrollTop = chatArea.scrollHeight;
         }
- 
+
         window.sendMessage = function () {
             const input = document.getElementById('message-input');
             const text = input.value.trim();
             if (!text) return;
- 
+
             const messagesRef = ref(db, 'chatrooms/' + roomCode + '/messages');
             push(messagesRef, {
                 text: text,
                 senderId: myId,
-                senderName: myName,
+                senderName: '相談者',
                 ts: Date.now()
             });
- 
+            registerRoomActivity();
+
             input.value = '';
         };
- 
+
         document.getElementById('message-input').addEventListener('keydown', function (e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 window.sendMessage();
             }
         });
+
+        // 初期化：部屋を登録して、メッセージの受信を開始する
+        registerRoomActivity();
+        listenForMessages();
     </script>
 </body>
 </html>
